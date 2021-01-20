@@ -82,137 +82,143 @@ class GazeboMessageSubscriber:
                 pass
             await asyncio.sleep(1)
     
-    '''
-    Converts the data from the LiDAR sensor into a usable data structure
+# Creates an instance of GazeboMessageSubscriber to store sensor data
+gz_sub = GazeboMessageSubscriber(HOST, PORT)
+asyncio.ensure_future(gz_sub.connect())
 
-    Returns a dictionary with the following values:
-    sec: current time in seconds
-    nsec: current time in nanoseconds(?)
+'''
+Converts the data from the LiDAR sensor into a usable data structure
 
-    x_pos: x coord of drone
-    y_pos: y coord of drone
-    z_pos: z coord of drone
+Argument: An instance of GazeboMessageSubscriber
 
-    x_ori
-    y_ori
-    z_ori
-    w_ori
-    ^ Tbh, I don't know what these mean. They're just under the orientation bracket
+Returns a dictionary with the following values:
+sec: current time in seconds
+nsec: current time in nanoseconds(?)
 
-    h_angle_max: Max horizontal angle (pi/6)
-    h_angle_min: Min horizontal angle (-pi/6)
-    h_angle_step: Step by which each horizontal angle increases
-    h_angle_count: Number of horizontal scan lines (20)
+x_pos: x coord of drone
+y_pos: y coord of drone
+z_pos: z coord of drone
 
-    v_angle_max: Max vertial angle (0)
-    v_angle_min: Min vertical angle (-pi/2)
-    v_angle_step: Step by which each vertical angle increases
-    v_angle_count: Number of vertical scan lines (20)
+x_ori
+y_ori
+z_ori
+w_ori
+^ Tbh, I don't know what these mean. They're just under the orientation bracket
 
-    range_min: Minimum range in which LiDAR will detect
-    range_max: Maximum range in which LiDAR will detect
-    (Else, it will return inf)
+h_angle_max: Max horizontal angle (pi/6)
+h_angle_min: Min horizontal angle (-pi/6)
+h_angle_step: Step by which each horizontal angle increases
+h_angle_count: Number of horizontal scan lines (20)
 
-    ranges: 2D array containing the sensed ranges (where the rows have the same vertical angle
-    and the columns have the same horizontal angle)
-    '''
-    async def display_LiDAR():
-        print("Compiling LiDAR result dictionary")
+v_angle_max: Max vertial angle (0)
+v_angle_min: Min vertical angle (-pi/2)
+v_angle_step: Step by which each vertical angle increases
+v_angle_count: Number of vertical scan lines (20)
 
-        # Timestamps
-        sec, nsec = self.LaserScanStamped.time.sec, self.LaserScanStamped.time.nsec
-        print(sec)
+range_min: Minimum range in which LiDAR will detect
+range_max: Maximum range in which LiDAR will detect
+(Else, it will return inf)
 
-        # Position and Orientation
-        x_pos, y_pos, z_pos = self.LaserScanStamped.world_pose.position.x, self.LaserScanStamped.world_pose.position.y, self.LaserScanStamped.world_pose.position.z
-        x_ori, y_ori, z_ori, w_ori = self.LaserScanStamped.world_pose.orientation.x, self.LaserScanStamped.world_pose.orientation.y, self.LaserScanStamped.world_pose.orientation.z, self.LaserScanStamped.world_pose.orientation.w
-        
-        result = {'sec': sec, 'nsec': nsec, 'x_pos': x_pos, 'y_pos': y_pos, 'z_pos': z_pos, 'x_ori': x_ori, 'y_ori': y_ori, 'z_ori': z_ori, 'w_ori': w_ori}
+ranges: 2D array containing the sensed ranges (where the rows have the same vertical angle
+and the columns have the same horizontal angle)
+'''
+def display_LiDAR(gazebo_sub):
+    print("Compiling LiDAR result dictionary")
 
-        # Bounds
-        result['h_angle_max'] = math.pi / 6
-        result['h_angle_min'] = -1 * h_angle_max
-        result['h_angle_step'] = self.LaserScanStamped.angle_step
-        result['h_angle_count'] = 20
+    # Timestamps
+    sec, nsec = gazebo_sub.LaserScanStamped.time.sec, gazebo_sub.LaserScanStamped.time.nsec
 
-        result['range_min'] = 0.2
-        result['range_max'] = 10
+    # Position and Orientation
+    x_pos, y_pos, z_pos = gazebo_sub.LaserScanStamped.scan.world_pose.position.x, gazebo_sub.LaserScanStamped.scan.world_pose.position.y, gazebo_sub.LaserScanStamped.scan.world_pose.position.z
+    x_ori, y_ori, z_ori, w_ori = gazebo_sub.LaserScanStamped.scan.world_pose.orientation.x, gazebo_sub.LaserScanStamped.scan.world_pose.orientation.y, gazebo_sub.LaserScanStamped.scan.world_pose.orientation.z, gazebo_sub.LaserScanStamped.scan.world_pose.orientation.w
 
-        result['v_angle_max'] = 0
-        result['v_angle_mix'] = -1 * (math.pi / 2)
-        result['v_angle_step'] = self.LaserScanStamped.vertical_angle_step
-        result['v_angle_count'] = 9
-
-        # Ranges
-        ranges = []
-        for v in range(1, v_angle_count + 1):
-            row = []
-            for h in range(1, h_angle_count + 1):
-                row.append(self.LaserScanStamped.scan.ranges[(v_angle_count * h_angle_count) - 1])
-            ranges.append(row)
-        result['ranges'] = ranges
-        print(result)
-        
-        return result
+    result = {'sec': sec, 'nsec': nsec, 'x_pos': x_pos, 'y_pos': y_pos, 'z_pos': z_pos, 'x_ori': x_ori, 'y_ori': y_ori, 'z_ori': z_ori, 'w_ori': w_ori}
     
-    '''
-    Converts the data from the GPS sensor into a usable data structure
+    # Bounds
+    result['h_angle_max'] = math.pi / 6
+    result['h_angle_min'] = -1 * result['h_angle_max']
+    result['h_angle_step'] = gazebo_sub.LaserScanStamped.scan.angle_step
+    result['h_angle_count'] = 20
 
-    Returns a dictionary with the following values:
-    sec: current time in seconds
-    nsec: current time in nanoseconds(?)
+    result['range_min'] = 0.2
+    result['range_max'] = 10
 
-    lat_deg: ???
-    long_deg: ???
-    altitude: Not sure if this is relative or absolute
+    result['v_angle_max'] = 0
+    result['v_angle_mix'] = -1 * (math.pi / 2)
+    result['v_angle_step'] = gazebo_sub.LaserScanStamped.scan.vertical_angle_step
+    result['v_angle_count'] = 9
 
-    v_east: velocity in the east direction (positive longitude?)
-    v_north: velocity in the north direction (positive latitude?)
-    v_up: velocity upwards (towards space? away from the ground?)
-    '''
-    async def display_GPS():
-        print("Compiling GPS result dictionary")
+    # Ranges
+    ranges = []
+    for v in range(1, result['v_angle_count'] + 1):
+        row = []
+        for h in range(1, result['h_angle_count'] + 1):
+            row.append(gazebo_sub.LaserScanStamped.scan.ranges[(result['v_angle_count'] * result['h_angle_count']) - 1])
+        ranges.append(row)
+    result['ranges'] = ranges
+    
+    return result
 
-        # Timestamps
-        sec, nsec = self.GPS.time.sec, self.GPS.time.nsec
+'''
+Converts the data from the GPS sensor into a usable data structure
 
-        result = {'sec': sec, 'nsec': nsec}
+Argument: An instance of GazeboMessageSubscriber
 
-        # Position
-        result['lat_deg'] = self.GPS.latitude_deg
-        result['long_deg'] = self.GPS.longitude_deg
-        result['altitude'] = self.GPS.altitude
+Returns a dictionary with the following values:
+sec: current time in seconds
+nsec: current time in nanoseconds(?)
 
-        # Velocity
-        result['v_east'] = self.velocity_east
-        result['v_north'] = self.velocity_north
-        result['v_up'] = self.velocity_up
+lat_deg: ???
+long_deg: ???
+altitude: Not sure if this is relative or absolute
 
-        print(result)
+v_east: velocity in the east direction (positive longitude?)
+v_north: velocity in the north direction (positive latitude?)
+v_up: velocity upwards (towards space? away from the ground?)
+'''
+def display_GPS(gazebo_sub):
+    print("Compiling GPS result dictionary")
 
-        return result
+    # Timestamps
+    sec, nsec = gazebo_sub.GPS.time.sec, gazebo_sub.GPS.time.nsec
+
+    result = {'sec': sec, 'nsec': nsec}
+
+    # Position
+    result['lat_deg'] = gazebo_sub.GPS.latitude_deg
+    result['long_deg'] = gazebo_sub.GPS.longitude_deg
+    result['altitude'] = gazebo_sub.GPS.altitude
+
+    # Velocity
+    result['v_east'] = gazebo_sub.GPS.velocity_east
+    result['v_north'] = gazebo_sub.GPS.velocity_north
+    result['v_up'] = gazebo_sub.GPS.velocity_up
+
+    return result
 
 '''
 Retrieves the values from both the GPS and LiDAR sensor and returns it (+ prints them to the terminal)
 
 Depending on the argument (strings), it retrieves the respective sensor data
-gps_data --> Returns GPS data
-lidar_data --> Returns LiDAR data
+gps_data --> Returns GPS data dictionary
+lidar_data --> Returns LiDAR data dictionary
+all --> Returns both LiDAR and GPS data dictionary (use two variables to retrieve)
 If the input is neither, it will return nothing (It's possible for me to raise an error if desired)
 '''
 async def retrieveSensorData(sensors):
-    gz_sub = GazeboMessageSubscriber(HOST, PORT)
-    asyncio.ensure_future(gz_sub.connect())
-    print('Retrieving ' + sensors)
-
     if sensors == 'gps_data':
+        print('-- Retrieving GPS Sensor Data')
         gps_val = await gz_sub.get_GPS()
-        print(gps_val)
-        # return await gz_sub.display_GPS()
+        return display_GPS(gz_sub)
     elif sensors == 'lidar_data':
+        print('-- Retrieving LiDAR Sensor Data')
         lidar_val = await gz_sub.get_LaserScanStamped()
-        print(lidar_val)
-        # gz_sub.display_LiDAR()
+        return display_LiDAR(gz_sub)
+    elif sensors == 'all':
+        print('-- Retrieving LiDAR and GPS Sensor Data')
+        gps_val = await gz_sub.get_GPS()
+        lidar_val = await gz_sub.get_LaserScanStamped()
+        return display_LiDAR(gz_sub), display_GPS(gz_sub)
 
 '''
 ~Computational Analysis~
@@ -326,13 +332,8 @@ async def inject_pt(drone, mission_items, home_alt, home_lat, home_lon):
                 f"{mission_progress.total}")
 
             # This retrieves sensor data each time the drone reaches a waypoint
-            print('* Retrieving Sensor Data')
-            await retrieveSensorData('gps_data')
-            await retrieveSensorData('lidar_data')
-            # print('* Retrieving GPS Data *')
-            # await retrieveSensorData('gps_data')
-            # print('* Retrieving LiDAR Data *')
-            # await retrieveSensorData('lidar_data')
+            print('* Retrieving Sensor Data *')
+            await retrieveSensorData('all')
 
             if(mission_progress.current == mission_progress.total and not pt_injected):
                 mission_item_idx = mission_progress.current
