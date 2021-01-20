@@ -117,7 +117,7 @@ class GazeboMessageSubscriber:
     and the columns have the same horizontal angle)
     '''
     async def display_LiDAR():
-        print("Compiling dictionary")
+        print("Compiling LiDAR result dictionary")
 
         # Timestamps
         sec, nsec = self.LaserScanStamped.time.sec, self.LaserScanStamped.time.nsec
@@ -171,6 +171,8 @@ class GazeboMessageSubscriber:
     v_up: velocity upwards (towards space? away from the ground?)
     '''
     async def display_GPS():
+        print("Compiling GPS result dictionary")
+
         # Timestamps
         sec, nsec = self.GPS.time.sec, self.GPS.time.nsec
 
@@ -185,6 +187,8 @@ class GazeboMessageSubscriber:
         result['v_east'] = self.velocity_east
         result['v_north'] = self.velocity_north
         result['v_up'] = self.velocity_up
+
+        print(result)
 
         return result
 
@@ -204,11 +208,11 @@ async def retrieveSensorData(sensors):
     if sensors == 'gps_data':
         gps_val = await gz_sub.get_GPS()
         print(gps_val)
-        return await gz_sub.display_GPS()
+        # return await gz_sub.display_GPS()
     elif sensors == 'lidar_data':
         lidar_val = await gz_sub.get_LaserScanStamped()
-        # print(lidar_val)
-        gz_sub.display_LiDAR()
+        print(lidar_val)
+        # gz_sub.display_LiDAR()
 
 '''
 ~Computational Analysis~
@@ -322,8 +326,13 @@ async def inject_pt(drone, mission_items, home_alt, home_lat, home_lon):
                 f"{mission_progress.total}")
 
             # This retrieves sensor data each time the drone reaches a waypoint
-            print('* Retrieving Sensor Data *')
+            print('* Retrieving Sensor Data')
+            await retrieveSensorData('gps_data')
             await retrieveSensorData('lidar_data')
+            # print('* Retrieving GPS Data *')
+            # await retrieveSensorData('gps_data')
+            # print('* Retrieving LiDAR Data *')
+            # await retrieveSensorData('lidar_data')
 
             if(mission_progress.current == mission_progress.total and not pt_injected):
                 mission_item_idx = mission_progress.current
