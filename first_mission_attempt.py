@@ -1,12 +1,98 @@
 #!/usr/bin/env python3
 
 import asyncio
+import pygazebo
+import pygazebo.msg.v11.laserscan_stamped_pb2 # Imports LiDAR readouts
+import pygazebo.msg.v11.gps_pb2 # Imports GPS readouts
 
 from mavsdk import System
 from mavsdk.mission import (MissionItem, MissionPlan)
 
+# The gazebo master from PX4 message
+HOST, PORT = "127.0.0.1", 11345
+
+# If I'm not mistaken, this class utilizes protocol buffers to retrieve data from the sensors
+# If we don't need GPS and LiDAR data simultaneously, I can split these into two classes
+class GazeboMessageSubscriber:
+    def __init__(self, host, port, timeout=30): # Initializes the class
+        self.host = host
+        self.port = port
+        self.loop = asyncio.get_event_loop()
+        self.running = False
+        self.timeout = timeout
+
+    async def connect(self):
+        connected = False
+
+        # I believe that this attempts to connect to the sensors for [self.timeout] seconds (default 30)
+        for i in range(self.timeout):
+            try:
+                self.manager = await pygazebo.connect((self.host, self.port))
+                connected = True
+                break
+            except Exception as e:
+                print(e)
+            await asyncio.sleep(1)
+        
+        # If a successful connection is made, the script enters this if statement here
+        if connected:
+            # These variables represent the topic and message for both of the sensors
+            lidar_topic = '/gazebo/default/iris_lmlidar/lmlidar/link/lmlidar/scan'
+            lidar_msg = 'gazebo.msgs.LaserScanStamped'
+            gps_topic = '/gazebo/default/iris_lmlidar/gps0/link/gps'
+            gps_msg = 'gazebo.msgs.GPS'
+
+            # These next few lines await the sensor data
+            self.lidar_subscriber = self.manager.subscribe(lidar_topic, lidar_msg, self.LaserScanStamped_callback)
+            self.gps_subscriber = self.manager.subscribe(gps_topic, gps_msg, self.gps_callback)
+
+            await self.lidar_subscriber.wait_for_connection()
+            await self.gps_subscriber.wait_for_connection()
+
+            self.running = True
+            while self.running:
+                await asyncio.sleep(0.1)
+        else:
+            raise Exception("Timeout connecting to Gazebo.")
+
+    def LaserScanStamped_callback(self, data):
+        self.LaserScanStamped = pygazebo.msg.v11.laserscan_stamped_pb2.LaserScanStamped()
+        self.LaserScanStamped.ParseFromString(data)
+
+    def gps_callback(self, data):
+        self.GPS = pygazebo.msg.v11.gps_pb2.GPS()
+        self.GPS.ParseFromString(data)
+
+    async def get_LaserScanStamped(self):
+        for i in range(self.timeout):
+            try:
+                return self.LaserScanStamped
+            except Exception as e:
+                # print(e) <-- For debugging, if we want to see the error message
+                pass
+            await asyncio.sleep(1)
+
+    async def get_GPS(self):
+        for i in range(self.timeout):
+            try:
+                return self.GPS
+            except Exception as e:
+                # print(e) <-- For debugging, if we want to see the error message
+                pass
+            await asyncio.sleep(1)
+
+async def retrieveSensorData():
+    gz_sub = GazeboMessageSubscriber(HOST, PORT)
+    asyncio.ensure_future(gz_sub.connect())
+    lidar_val = await gz_sub.get_LaserScanStamped()
+    gps_val = await gz_sub.get_GPS()
+
+    # Prints sensor data to terminal
+    print(lidar_val)
+    print(gps_val)
 
 async def run():
+    # Connects to the drone
     drone = System()
     await drone.connect(system_address="udp://:14540")
 
@@ -32,12 +118,52 @@ async def run():
     # The mission items would be appended to this array here
     mission_items = []
     # mission_items.append(MissionItems(insert arguments here))
+
+    # Below is the demo mission path --> It's been commented out
+    # mission_items.append(MissionItem(home_lat + 0.0001,
+    #                                  home_lon + 0.0000,
+    #                                  home_alt + 5,
+    #                                  10,
+    #                                  True,
+    #                                  float('nan'),
+    #                                  float('nan'),
+    #                                  MissionItem.CameraAction.NONE,
+    #                                  float('nan'),
+    #                                  float('nan')))
+    # mission_items.append(MissionItem(home_lat + 0.0001,
+    #                                  home_lon + 0.0001,
+    #                                  home_alt + 5,
+    #                                  10,
+    #                                  True,
+    #                                  float('nan'),
+    #                                  float('nan'),
+    #                                  MissionItem.CameraAction.NONE,
+    #                                  float('nan'),
+    #                                  float('nan')))
+    # mission_items.append(MissionItem(home_lat + 0.0000,
+    #                                  home_lon + 0.0001,
+    #                                  home_alt + 5,
+    #                                  10,
+    #                                  True,
+    #                                  float('nan'),
+    #                                  float('nan'),
+    #                                  MissionItem.CameraAction.NONE,
+    #                                  float('nan'),
+    #                                  float('nan')))
+    # mission_items.append(MissionItem(home_lat - 0.0001,
+    #                                  home_lon + 0.0001,
+    #                                  home_alt + 5,
+    #                                  10,
+    #                                  True,
+    #                                  float('nan'),
+    #                                  float('nan'),
+    #                                  MissionItem.CameraAction.NONE,
+    #                                  float('nan'),
+    #                                  float('nan')))
     
     # This here is the code to inject a waypoint into the mission plan (?)
     inject_pt_task = asyncio.ensure_future(inject_pt(drone, mission_items, home_alt, home_lat, home_lon))
     running_tasks = [inject_pt_task]
-
-
     
     termination_task = asyncio.ensure_future(observe_is_in_air(drone, running_tasks))
     
@@ -69,6 +195,9 @@ async def inject_pt(drone, mission_items, home_alt, home_lat, home_lon):
             print(f"Mission progress: "
                 f"{mission_progress.current}/"
                 f"{mission_progress.total}")
+
+            # This retrieves sensor data each time the drone reaches a waypoint
+            await retrieveSensorData()
 
             if(mission_progress.current == mission_progress.total and not pt_injected):
                 mission_item_idx = mission_progress.current
