@@ -4,6 +4,7 @@ import asyncio
 import pygazebo
 import pygazebo.msg.v11.laserscan_stamped_pb2 # Imports LiDAR readouts
 import pygazebo.msg.v11.gps_pb2 # Imports GPS readouts
+import math
 
 from mavsdk import System
 from mavsdk.mission import (MissionItem, MissionPlan)
@@ -80,16 +81,140 @@ class GazeboMessageSubscriber:
                 # print(e) <-- For debugging, if we want to see the error message
                 pass
             await asyncio.sleep(1)
+    
+    '''
+    Converts the data from the LiDAR sensor into a usable data structure
 
-async def retrieveSensorData():
+    Returns a dictionary with the following values:
+    sec: current time in seconds
+    nsec: current time in nanoseconds(?)
+
+    x_pos: x coord of drone
+    y_pos: y coord of drone
+    z_pos: z coord of drone
+
+    x_ori
+    y_ori
+    z_ori
+    w_ori
+    ^ Tbh, I don't know what these mean. They're just under the orientation bracket
+
+    h_angle_max: Max horizontal angle (pi/6)
+    h_angle_min: Min horizontal angle (-pi/6)
+    h_angle_step: Step by which each horizontal angle increases
+    h_angle_count: Number of horizontal scan lines (20)
+
+    v_angle_max: Max vertial angle (0)
+    v_angle_min: Min vertical angle (-pi/2)
+    v_angle_step: Step by which each vertical angle increases
+    v_angle_count: Number of vertical scan lines (20)
+
+    range_min: Minimum range in which LiDAR will detect
+    range_max: Maximum range in which LiDAR will detect
+    (Else, it will return inf)
+
+    ranges: 2D array containing the sensed ranges (where the rows have the same vertical angle
+    and the columns have the same horizontal angle)
+    '''
+    async def display_LiDAR():
+        print("Compiling dictionary")
+
+        # Timestamps
+        sec, nsec = self.LaserScanStamped.time.sec, self.LaserScanStamped.time.nsec
+        print(sec)
+
+        # Position and Orientation
+        x_pos, y_pos, z_pos = self.LaserScanStamped.world_pose.position.x, self.LaserScanStamped.world_pose.position.y, self.LaserScanStamped.world_pose.position.z
+        x_ori, y_ori, z_ori, w_ori = self.LaserScanStamped.world_pose.orientation.x, self.LaserScanStamped.world_pose.orientation.y, self.LaserScanStamped.world_pose.orientation.z, self.LaserScanStamped.world_pose.orientation.w
+        
+        result = {'sec': sec, 'nsec': nsec, 'x_pos': x_pos, 'y_pos': y_pos, 'z_pos': z_pos, 'x_ori': x_ori, 'y_ori': y_ori, 'z_ori': z_ori, 'w_ori': w_ori}
+
+        # Bounds
+        result['h_angle_max'] = math.pi / 6
+        result['h_angle_min'] = -1 * h_angle_max
+        result['h_angle_step'] = self.LaserScanStamped.angle_step
+        result['h_angle_count'] = 20
+
+        result['range_min'] = 0.2
+        result['range_max'] = 10
+
+        result['v_angle_max'] = 0
+        result['v_angle_mix'] = -1 * (math.pi / 2)
+        result['v_angle_step'] = self.LaserScanStamped.vertical_angle_step
+        result['v_angle_count'] = 9
+
+        # Ranges
+        ranges = []
+        for v in range(1, v_angle_count + 1):
+            row = []
+            for h in range(1, h_angle_count + 1):
+                row.append(self.LaserScanStamped.scan.ranges[(v_angle_count * h_angle_count) - 1])
+            ranges.append(row)
+        result['ranges'] = ranges
+        print(result)
+        
+        return result
+    
+    '''
+    Converts the data from the GPS sensor into a usable data structure
+
+    Returns a dictionary with the following values:
+    sec: current time in seconds
+    nsec: current time in nanoseconds(?)
+
+    lat_deg: ???
+    long_deg: ???
+    altitude: Not sure if this is relative or absolute
+
+    v_east: velocity in the east direction (positive longitude?)
+    v_north: velocity in the north direction (positive latitude?)
+    v_up: velocity upwards (towards space? away from the ground?)
+    '''
+    async def display_GPS():
+        # Timestamps
+        sec, nsec = self.GPS.time.sec, self.GPS.time.nsec
+
+        result = {'sec': sec, 'nsec': nsec}
+
+        # Position
+        result['lat_deg'] = self.GPS.latitude_deg
+        result['long_deg'] = self.GPS.longitude_deg
+        result['altitude'] = self.GPS.altitude
+
+        # Velocity
+        result['v_east'] = self.velocity_east
+        result['v_north'] = self.velocity_north
+        result['v_up'] = self.velocity_up
+
+        return result
+
+'''
+Retrieves the values from both the GPS and LiDAR sensor and returns it (+ prints them to the terminal)
+
+Depending on the argument (strings), it retrieves the respective sensor data
+gps_data --> Returns GPS data
+lidar_data --> Returns LiDAR data
+If the input is neither, it will return nothing (It's possible for me to raise an error if desired)
+'''
+async def retrieveSensorData(sensors):
     gz_sub = GazeboMessageSubscriber(HOST, PORT)
     asyncio.ensure_future(gz_sub.connect())
-    lidar_val = await gz_sub.get_LaserScanStamped()
-    gps_val = await gz_sub.get_GPS()
+    print('Retrieving ' + sensors)
 
-    # Prints sensor data to terminal
-    print(lidar_val)
-    print(gps_val)
+    if sensors == 'gps_data':
+        gps_val = await gz_sub.get_GPS()
+        print(gps_val)
+        return await gz_sub.display_GPS()
+    elif sensors == 'lidar_data':
+        lidar_val = await gz_sub.get_LaserScanStamped()
+        # print(lidar_val)
+        gz_sub.display_LiDAR()
+
+'''
+~Computational Analysis~
+'''
+async def computationalAnalysis():
+    await retrieveSensorData
 
 async def run():
     # Connects to the drone
@@ -120,46 +245,46 @@ async def run():
     # mission_items.append(MissionItems(insert arguments here))
 
     # Below is the demo mission path --> It's been commented out
-    # mission_items.append(MissionItem(home_lat + 0.0001,
-    #                                  home_lon + 0.0000,
-    #                                  home_alt + 5,
-    #                                  10,
-    #                                  True,
-    #                                  float('nan'),
-    #                                  float('nan'),
-    #                                  MissionItem.CameraAction.NONE,
-    #                                  float('nan'),
-    #                                  float('nan')))
-    # mission_items.append(MissionItem(home_lat + 0.0001,
-    #                                  home_lon + 0.0001,
-    #                                  home_alt + 5,
-    #                                  10,
-    #                                  True,
-    #                                  float('nan'),
-    #                                  float('nan'),
-    #                                  MissionItem.CameraAction.NONE,
-    #                                  float('nan'),
-    #                                  float('nan')))
-    # mission_items.append(MissionItem(home_lat + 0.0000,
-    #                                  home_lon + 0.0001,
-    #                                  home_alt + 5,
-    #                                  10,
-    #                                  True,
-    #                                  float('nan'),
-    #                                  float('nan'),
-    #                                  MissionItem.CameraAction.NONE,
-    #                                  float('nan'),
-    #                                  float('nan')))
-    # mission_items.append(MissionItem(home_lat - 0.0001,
-    #                                  home_lon + 0.0001,
-    #                                  home_alt + 5,
-    #                                  10,
-    #                                  True,
-    #                                  float('nan'),
-    #                                  float('nan'),
-    #                                  MissionItem.CameraAction.NONE,
-    #                                  float('nan'),
-    #                                  float('nan')))
+    mission_items.append(MissionItem(home_lat + 0.0001,
+                                     home_lon + 0.0000,
+                                     home_alt + 5,
+                                     10,
+                                     True,
+                                     float('nan'),
+                                     float('nan'),
+                                     MissionItem.CameraAction.NONE,
+                                     float('nan'),
+                                     float('nan')))
+    mission_items.append(MissionItem(home_lat + 0.0001,
+                                     home_lon + 0.0001,
+                                     home_alt + 5,
+                                     10,
+                                     True,
+                                     float('nan'),
+                                     float('nan'),
+                                     MissionItem.CameraAction.NONE,
+                                     float('nan'),
+                                     float('nan')))
+    mission_items.append(MissionItem(home_lat + 0.0000,
+                                     home_lon + 0.0001,
+                                     home_alt + 5,
+                                     10,
+                                     True,
+                                     float('nan'),
+                                     float('nan'),
+                                     MissionItem.CameraAction.NONE,
+                                     float('nan'),
+                                     float('nan')))
+    mission_items.append(MissionItem(home_lat - 0.0001,
+                                     home_lon + 0.0001,
+                                     home_alt + 5,
+                                     10,
+                                     True,
+                                     float('nan'),
+                                     float('nan'),
+                                     MissionItem.CameraAction.NONE,
+                                     float('nan'),
+                                     float('nan')))
     
     # This here is the code to inject a waypoint into the mission plan (?)
     inject_pt_task = asyncio.ensure_future(inject_pt(drone, mission_items, home_alt, home_lat, home_lon))
@@ -197,7 +322,8 @@ async def inject_pt(drone, mission_items, home_alt, home_lat, home_lon):
                 f"{mission_progress.total}")
 
             # This retrieves sensor data each time the drone reaches a waypoint
-            await retrieveSensorData()
+            print('* Retrieving Sensor Data *')
+            await retrieveSensorData('lidar_data')
 
             if(mission_progress.current == mission_progress.total and not pt_injected):
                 mission_item_idx = mission_progress.current
