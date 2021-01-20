@@ -34,7 +34,7 @@ class GazeboMessageSubscriber:
             except Exception as e:
                 print(e)
             await asyncio.sleep(1)
-        
+
         # If a successful connection is made, the script enters this if statement here
         if connected:
             # These variables represent the topic and message for both of the sensors
@@ -81,7 +81,7 @@ class GazeboMessageSubscriber:
                 # print(e) <-- For debugging, if we want to see the error message
                 pass
             await asyncio.sleep(1)
-    
+
 # Creates an instance of GazeboMessageSubscriber to store sensor data
 gz_sub = GazeboMessageSubscriber(HOST, PORT)
 asyncio.ensure_future(gz_sub.connect())
@@ -133,7 +133,7 @@ def display_LiDAR(gazebo_sub):
     x_ori, y_ori, z_ori, w_ori = gazebo_sub.LaserScanStamped.scan.world_pose.orientation.x, gazebo_sub.LaserScanStamped.scan.world_pose.orientation.y, gazebo_sub.LaserScanStamped.scan.world_pose.orientation.z, gazebo_sub.LaserScanStamped.scan.world_pose.orientation.w
 
     result = {'sec': sec, 'nsec': nsec, 'x_pos': x_pos, 'y_pos': y_pos, 'z_pos': z_pos, 'x_ori': x_ori, 'y_ori': y_ori, 'z_ori': z_ori, 'w_ori': w_ori}
-    
+
     # Bounds
     result['h_angle_max'] = math.pi / 6
     result['h_angle_min'] = -1 * result['h_angle_max']
@@ -156,7 +156,7 @@ def display_LiDAR(gazebo_sub):
             row.append(gazebo_sub.LaserScanStamped.scan.ranges[(result['v_angle_count'] * result['h_angle_count']) - 1])
         ranges.append(row)
     result['ranges'] = ranges
-    
+
     return result
 
 '''
@@ -295,15 +295,15 @@ async def run():
                                      MissionItem.CameraAction.NONE,
                                      float('nan'),
                                      float('nan')))
-    
+
     # This here is the code to inject a waypoint into the mission plan (?)
     inject_pt_task = asyncio.ensure_future(inject_pt(drone, mission_items, home_alt, home_lat, home_lon))
     running_tasks = [inject_pt_task]
-    
+
     termination_task = asyncio.ensure_future(observe_is_in_air(drone, running_tasks))
-    
+
     mission_plan = MissionPlan(mission_items)
-    
+
     print("-- Arming")
     await drone.action.arm()
 
@@ -397,3 +397,4 @@ async def observe_is_in_air(drone, running_tasks):
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(run())
+    #hi
