@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+#d
 import asyncio
 import pygazebo
 import pygazebo.msg.v11.laserscan_stamped_pb2 # Imports LiDAR readouts
